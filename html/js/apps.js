@@ -1,6 +1,4 @@
-// ===== APPS.JS - All App UIs =====
-
-
+// ===== APPS.JS - All App UIs (Mesaj silme desteği eklendi) =====
 
 const Apps = {
   load(appName) {
@@ -94,7 +92,7 @@ const Apps = {
     NUI.post('makeCall', { number });
   },
 
-  // ===== MESSAGES =====
+  // ===== MESSAGES (silme eklendi) =====
   messages() {
     NUI.callback('getMessages').then(msgs => {
       const btn = document.getElementById('app-header-action');
@@ -111,7 +109,7 @@ const Apps = {
       // Group by conversation
       const convMap = {};
       msgs.forEach(m => {
-        const key = m.sender_number || m.receiver_number;
+        const key = m.sender_number === Phone.playerData?.number ? m.receiver_number : m.sender_number;
         if (!convMap[key]) convMap[key] = m;
       });
 
@@ -121,7 +119,10 @@ const Apps = {
         const name = m.sender_name || number;
         const initials = name.charAt(0).toUpperCase();
         html += `
-          <div class="list-item" onclick="Apps.openConversation('${escHtml(number)}','${escHtml(name)}')">
+          <div class="list-item" 
+               onclick="Apps.openConversation('${escHtml(number)}','${escHtml(name)}')"
+               oncontextmenu="event.preventDefault(); Apps.deleteConversation('${escHtml(number)}')"
+               style="cursor: pointer;">
             <div class="list-avatar">${initials}</div>
             <div class="list-info">
               <div class="list-name">${escHtml(name)}</div>
@@ -137,6 +138,68 @@ const Apps = {
       document.getElementById('app-content').innerHTML = html;
     });
   },
+
+  // Konuşma silme
+ 
+deleteConversation(number) {
+    showModal('', `
+        <div class="delete-modal">
+            <div class="delete-icon">🗑️</div>
+            <div class="delete-title">Konuşmayı Sil</div>
+            <div class="delete-message">Bu konuşma kalıcı olarak silinecek. Geri alamazsınız.</div>
+            <div class="delete-buttons">
+                <button class="btn delete-cancel" onclick="closeModal()">İptal</button>
+                <button class="btn delete-confirm" onclick="Apps.confirmDeleteConversation('${number}')">Evet, Sil</button>
+            </div>
+        </div>
+    `);
+},
+
+confirmDeleteConversation(number) {
+    closeModal();
+    NUI.callback('deleteConversation', { number }).then(() => {
+        this.messages(); // Listeyi yenile
+        if (typeof Phone !== 'undefined' && Phone.showNotification) {
+            Phone.showNotification({ icon: '🗑️', title: 'Silindi', message: 'Konuşma silindi' });
+        }
+    }).catch(err => {
+        console.warn('deleteConversation hatası:', err);
+        Phone.showNotification({ icon: '❌', title: 'Hata', message: 'Silme başarısız' });
+    });
+},
+
+  // Tek mesaj silme - onay modalı ile (sadece gelen mesajlar için)
+deleteMessage(id, isMine) {
+    if (isMine) {
+        Phone.showNotification({ icon: '⚠️', title: 'Uyarı', message: 'Sadece başkasının mesajlarını silebilirsiniz.' });
+        return;
+    }
+    showModal('', `
+        <div class="delete-modal">
+            <div class="delete-icon">🗑️</div>
+            <div class="delete-title">Mesajı Sil</div>
+            <div class="delete-message">Bu mesajı silmek istediğinize emin misiniz?</div>
+            <div class="delete-buttons">
+                <button class="btn delete-cancel" onclick="closeModal()">İptal</button>
+                <button class="btn delete-confirm" onclick="Apps.confirmDeleteMessage(${id})">Evet, Sil</button>
+            </div>
+        </div>
+    `);
+},
+
+confirmDeleteMessage(id) {
+    closeModal();
+    NUI.callback('deleteMessage', { id }).then(() => {
+        // Mevcut konuşmayı yeniden aç
+        if (Phone.currentConversation) {
+            this.openConversation(Phone.currentConversation.number, Phone.currentConversation.name);
+        }
+        Phone.showNotification({ icon: '🗑️', title: 'Silindi', message: 'Mesaj silindi' });
+    }).catch(err => {
+        console.warn('deleteMessage hatası:', err);
+        Phone.showNotification({ icon: '❌', title: 'Hata', message: 'Silme başarısız' });
+    });
+},
 
   openConversation(number, name) {
     document.getElementById('app-header-title').textContent = name || number;
@@ -154,7 +217,12 @@ const Apps = {
       } else {
         msgs.forEach(m => {
           const isMine = m.sender_number !== number;
-          html += `<div class="msg-bubble ${isMine?'sent':'received'}">${escHtml(m.message)}</div>
+          html += `
+            <div class="msg-bubble ${isMine?'sent':'received'}" 
+                 oncontextmenu="event.preventDefault(); Apps.deleteMessage(${m.id}, ${isMine})"
+                 style="cursor: pointer;">
+              ${escHtml(m.message)}
+            </div>
             <div class="msg-time" style="text-align:${isMine?'right':'left'};padding:${isMine?'0 16px 8px':'0 16px 8px'}">${timeAgo(m.created_at)}</div>`;
         });
       }
@@ -771,223 +839,217 @@ const Apps = {
     Phone.showNotification({ icon:'💼', title:'WorkHub', message:'İlanınız yayınlandı!' });
     setTimeout(() => this.jobs(), 500);
   },
-// ===== GARAGE (VALE) - FOTOĞRAFLI, GÜVENLİ VE HARİTALI =====
-garage() {
-  NUI.callback('getGarageVehicles').then(vehicles => {
-    const btn = document.getElementById('app-header-action');
-    if (btn) btn.style.display = 'none';
 
-    const content = document.getElementById('app-content');
-    if (!content) return;
+  // ===== GARAGE (VALE) - FOTOĞRAFLI, GÜVENLİ VE HARİTALI =====
+  garage() {
+    NUI.callback('getGarageVehicles').then(vehicles => {
+      const btn = document.getElementById('app-header-action');
+      if (btn) btn.style.display = 'none';
 
-    if (!vehicles || !vehicles.length) {
-      content.innerHTML = `<div class="empty-state"><div class="empty-icon">🚗</div><p>Garajınızda araç yok</p></div>`;
-      return;
-    }
+      const content = document.getElementById('app-content');
+      if (!content) return;
 
-    let html = `
-      <div class="garage-header">
-        <div class="garage-stats">
-          <div class="garage-stat">
-            <span class="garage-stat-num">${vehicles.length}</span>
-            <span class="garage-stat-label">Araç</span>
-          </div>
-          <div class="garage-stat">
-            <span class="garage-stat-num">${vehicles.filter(v => v.state === 0).length}</span>
-            <span class="garage-stat-label">Dışarıda</span>
-          </div>
-          <div class="garage-stat">
-            <span class="garage-stat-num">${vehicles.filter(v => v.state === 1).length}</span>
-            <span class="garage-stat-label">Garajda</span>
-          </div>
-        </div>
-      </div>
-      <div class="garage-list">`;
+      if (!vehicles || !vehicles.length) {
+        content.innerHTML = `<div class="empty-state"><div class="empty-icon">🚗</div><p>Garajınızda araç yok</p></div>`;
+        return;
+      }
 
-    vehicles.forEach(v => {
-      const stateLabel = v.state === 0 ? 'Dışarıda' : v.state === 1 ? 'Garajda' : 'El Konuldu';
-      const stateColor = v.state === 0 ? 'var(--warning)' : v.state === 1 ? 'var(--success)' : 'var(--danger)';
-      const stateDot   = v.state === 0 ? '🟡' : v.state === 1 ? '🟢' : '🔴';
-      const plateClean = (v.plate || 'PLAKA').toUpperCase().trim();
-      const modelName  = (v.label || v.model || v.vehicle || 'Araç').toUpperCase();
-      const modelForUrl = (v.model || v.vehicle || '').toLowerCase();
-      const imgUrl     = modelForUrl ? `https://docs.fivem.net/vehicles/${modelForUrl}.webp` : '';
-      const coordsJson = escHtml(JSON.stringify(v.coords || null));
-
-      html += `
-        <div class="garage-vehicle-card" id="vcard-${plateClean.replace(/[^a-zA-Z0-9]/g, '')}">
-          <div class="garage-vehicle-img-wrap">
-            ${imgUrl
-              ? `<img class="garage-vehicle-img" src="${imgUrl}"
-                   onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'garage-vehicle-placeholder\\'>🚗</div>';"
-                   alt="${modelName}">`
-              : `<div class="garage-vehicle-placeholder">🚗</div>`
-            }
-          </div>
-          <div class="garage-vehicle-info">
-            <div class="garage-vehicle-name">${escHtml(v.label || modelName)}</div>
-            <div class="garage-plate-badge">${escHtml(plateClean)}</div>
-            <div class="garage-vehicle-meta">
-              <span style="color:${stateColor}">${stateDot} ${stateLabel}</span>
-              ${v.fuel   !== undefined ? `<span>⛽ ${v.fuel}%</span>` : ''}
-              ${v.engine !== undefined ? `<span>🔧 ${Math.round(v.engine / 10)}%</span>` : ''}
+      let html = `
+        <div class="garage-header">
+          <div class="garage-stats">
+            <div class="garage-stat">
+              <span class="garage-stat-num">${vehicles.length}</span>
+              <span class="garage-stat-label">Araç</span>
+            </div>
+            <div class="garage-stat">
+              <span class="garage-stat-num">${vehicles.filter(v => v.state === 0).length}</span>
+              <span class="garage-stat-label">Dışarıda</span>
+            </div>
+            <div class="garage-stat">
+              <span class="garage-stat-num">${vehicles.filter(v => v.state === 1).length}</span>
+              <span class="garage-stat-label">Garajda</span>
             </div>
           </div>
-          <div class="garage-vehicle-actions">
-            ${v.state === 1
-              ? `<button class="btn btn-primary btn-sm garage-spawn-btn"
-                   data-plate="${escHtml(plateClean)}"
-                   data-label="${escHtml(v.label || modelName)}">
-                   🚗 Getir
-                 </button>`
-              : v.state === 0
-                ? `<button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--text3)" disabled>
-                     ⚡ Kullanımda
-                   </button>
-                   <button class="btn btn-secondary btn-sm garage-map-btn"
+        </div>
+        <div class="garage-list">`;
+
+      vehicles.forEach(v => {
+        const stateLabel = v.state === 0 ? 'Dışarıda' : v.state === 1 ? 'Garajda' : 'El Konuldu';
+        const stateColor = v.state === 0 ? 'var(--warning)' : v.state === 1 ? 'var(--success)' : 'var(--danger)';
+        const stateDot   = v.state === 0 ? '🟡' : v.state === 1 ? '🟢' : '🔴';
+        const plateClean = (v.plate || 'PLAKA').toUpperCase().trim();
+        const modelName  = (v.label || v.model || v.vehicle || 'Araç').toUpperCase();
+        const modelForUrl = (v.model || v.vehicle || '').toLowerCase();
+        const imgUrl     = modelForUrl ? `https://docs.fivem.net/vehicles/${modelForUrl}.webp` : '';
+        const coordsJson = escHtml(JSON.stringify(v.coords || null));
+
+        html += `
+          <div class="garage-vehicle-card" id="vcard-${plateClean.replace(/[^a-zA-Z0-9]/g, '')}">
+            <div class="garage-vehicle-img-wrap">
+              ${imgUrl
+                ? `<img class="garage-vehicle-img" src="${imgUrl}"
+                     onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'garage-vehicle-placeholder\\'>🚗</div>';"
+                     alt="${modelName}">`
+                : `<div class="garage-vehicle-placeholder">🚗</div>`
+              }
+            </div>
+            <div class="garage-vehicle-info">
+              <div class="garage-vehicle-name">${escHtml(v.label || modelName)}</div>
+              <div class="garage-plate-badge">${escHtml(plateClean)}</div>
+              <div class="garage-vehicle-meta">
+                <span style="color:${stateColor}">${stateDot} ${stateLabel}</span>
+                ${v.fuel   !== undefined ? `<span>⛽ ${v.fuel}%</span>` : ''}
+                ${v.engine !== undefined ? `<span>🔧 ${Math.round(v.engine / 10)}%</span>` : ''}
+              </div>
+            </div>
+            <div class="garage-vehicle-actions">
+              ${v.state === 1
+                ? `<button class="btn btn-primary btn-sm garage-spawn-btn"
                      data-plate="${escHtml(plateClean)}"
-                     data-label="${escHtml(v.label || modelName)}"
-                     data-coords="${coordsJson}">
-                     🗺️ Haritada Gör
+                     data-label="${escHtml(v.label || modelName)}">
+                     🚗 Getir
                    </button>`
-                : `<button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--text3)" disabled>
-                     🚔 El Konuldu
-                   </button>`
-            }
-          </div>
-        </div>`;
-    });
+                : v.state === 0
+                  ? `<button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--text3)" disabled>
+                       ⚡ Kullanımda
+                     </button>
+                     <button class="btn btn-secondary btn-sm garage-map-btn"
+                       data-plate="${escHtml(plateClean)}"
+                       data-label="${escHtml(v.label || modelName)}"
+                       data-coords="${coordsJson}">
+                       🗺️ Haritada Gör
+                     </button>`
+                  : `<button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--text3)" disabled>
+                       🚔 El Konuldu
+                     </button>`
+              }
+            </div>
+          </div>`;
+      });
 
-    html += `</div>`;
-    content.innerHTML = html;
+      html += `</div>`;
+      content.innerHTML = html;
 
-    // Spawn butonları
-    document.querySelectorAll('.garage-spawn-btn').forEach(btn => {
-      btn.removeEventListener('click', this.spawnVehicleHandler);
-      btn.addEventListener('click', this.spawnVehicleHandler.bind(this));
-    });
+      // Spawn butonları
+      document.querySelectorAll('.garage-spawn-btn').forEach(btn => {
+        btn.removeEventListener('click', this.spawnVehicleHandler);
+        btn.addEventListener('click', this.spawnVehicleHandler.bind(this));
+      });
 
-    // Harita butonları
-    document.querySelectorAll('.garage-map-btn').forEach(btn => {
-      btn.removeEventListener('click', this.mapVehicleHandler);
-      btn.addEventListener('click', this.mapVehicleHandler.bind(this));
-    });
+      // Harita butonları
+      document.querySelectorAll('.garage-map-btn').forEach(btn => {
+        btn.removeEventListener('click', this.mapVehicleHandler);
+        btn.addEventListener('click', this.mapVehicleHandler.bind(this));
+      });
 
-  }).catch(err => {
-    console.warn('getGarageVehicles hatası:', err);
-    const content = document.getElementById('app-content');
-    if (content) {
-      content.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Garaj verileri alınamadı</p></div>`;
-    }
-  });
-},
-
-// ── Spawn handler ──────────────────────────────────────────────────────────────
-spawnVehicleHandler(event) {
-  const btn   = event.currentTarget;
-  const plate = btn.getAttribute('data-plate');
-  const label = btn.getAttribute('data-label');
-  this.spawnVehicle(plate, label, btn);
-},
-
-// Araç çağırma (güvenli)
-spawnVehicle(plate, label, btn) {
-  if (!btn) return;
-  btn.textContent = '⏳ Getiriliyor...';
-  btn.disabled    = true;
-  btn.style.opacity = '0.6';
-
-  NUI.callback('spawnGarageVehicle', { plate }).then(result => {
-    if (result?.success) {
-      if (typeof Phone !== 'undefined' && Phone.showNotification) {
-        Phone.showNotification({ icon: '🚗', title: 'Vale', message: label + ' önünüze getirildi!' });
+    }).catch(err => {
+      console.warn('getGarageVehicles hatası:', err);
+      const content = document.getElementById('app-content');
+      if (content) {
+        content.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Garaj verileri alınamadı</p></div>`;
       }
-      // Kartı güncelle: artık dışarıda
-      const card = btn.closest('.garage-vehicle-card');
-      if (card) {
-        const actionsDiv = card.querySelector('.garage-vehicle-actions');
-        if (actionsDiv) {
-          actionsDiv.innerHTML = `
-            <button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--text3)" disabled>
-              ⚡ Kullanımda
-            </button>
-            <button class="btn btn-secondary btn-sm garage-map-btn"
-              data-plate="${btn.getAttribute('data-plate')}"
-              data-label="${btn.getAttribute('data-label')}"
-              data-coords="null">
-              🗺️ Haritada Gör
-            </button>`;
-          // Yeni eklenen harita butonuna listener bağla
-          const mapBtn = actionsDiv.querySelector('.garage-map-btn');
-          if (mapBtn) mapBtn.addEventListener('click', this.mapVehicleHandler.bind(this));
+    });
+  },
+
+  spawnVehicleHandler(event) {
+    const btn   = event.currentTarget;
+    const plate = btn.getAttribute('data-plate');
+    const label = btn.getAttribute('data-label');
+    this.spawnVehicle(plate, label, btn);
+  },
+
+  spawnVehicle(plate, label, btn) {
+    if (!btn) return;
+    btn.textContent = '⏳ Getiriliyor...';
+    btn.disabled    = true;
+    btn.style.opacity = '0.6';
+
+    NUI.callback('spawnGarageVehicle', { plate }).then(result => {
+      if (result?.success) {
+        if (typeof Phone !== 'undefined' && Phone.showNotification) {
+          Phone.showNotification({ icon: '🚗', title: 'Vale', message: label + ' önünüze getirildi!' });
         }
-        const metaSpan = card.querySelector('.garage-vehicle-meta span');
-        if (metaSpan) {
-          metaSpan.style.color = 'var(--warning)';
-          metaSpan.textContent = '🟡 Dışarıda';
+        const card = btn.closest('.garage-vehicle-card');
+        if (card) {
+          const actionsDiv = card.querySelector('.garage-vehicle-actions');
+          if (actionsDiv) {
+            actionsDiv.innerHTML = `
+              <button class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--text3)" disabled>
+                ⚡ Kullanımda
+              </button>
+              <button class="btn btn-secondary btn-sm garage-map-btn"
+                data-plate="${btn.getAttribute('data-plate')}"
+                data-label="${btn.getAttribute('data-label')}"
+                data-coords="null">
+                🗺️ Haritada Gör
+              </button>`;
+            const mapBtn = actionsDiv.querySelector('.garage-map-btn');
+            if (mapBtn) mapBtn.addEventListener('click', this.mapVehicleHandler.bind(this));
+          }
+          const metaSpan = card.querySelector('.garage-vehicle-meta span');
+          if (metaSpan) {
+            metaSpan.style.color = 'var(--warning)';
+            metaSpan.textContent = '🟡 Dışarıda';
+          }
         }
+      } else {
+        if (typeof Phone !== 'undefined' && Phone.showNotification) {
+          Phone.showNotification({ icon: '❌', title: 'Vale', message: result?.message || 'Araç getirilemedi!' });
+        }
+        btn.textContent   = '🚗 Getir';
+        btn.disabled      = false;
+        btn.style.opacity = '1';
       }
-    } else {
+    }).catch(err => {
+      console.warn('spawnVehicle hatası:', err);
       if (typeof Phone !== 'undefined' && Phone.showNotification) {
-        Phone.showNotification({ icon: '❌', title: 'Vale', message: result?.message || 'Araç getirilemedi!' });
+        Phone.showNotification({ icon: '❌', title: 'Vale', message: 'Bir hata oluştu!' });
       }
       btn.textContent   = '🚗 Getir';
       btn.disabled      = false;
       btn.style.opacity = '1';
-    }
-  }).catch(err => {
-    console.warn('spawnVehicle hatası:', err);
-    if (typeof Phone !== 'undefined' && Phone.showNotification) {
-      Phone.showNotification({ icon: '❌', title: 'Vale', message: 'Bir hata oluştu!' });
-    }
-    btn.textContent   = '🚗 Getir';
-    btn.disabled      = false;
-    btn.style.opacity = '1';
-  });
-},
+    });
+  },
 
-// ── Harita handler ─────────────────────────────────────────────────────────────
-mapVehicleHandler(event) {
-  const btn   = event.currentTarget;
-  const plate = btn.getAttribute('data-plate');
-  const label = btn.getAttribute('data-label');
-  let coords  = null;
-  try { coords = JSON.parse(btn.getAttribute('data-coords')); } catch (_) {}
-  this.showVehicleOnMap(plate, label, coords);
-},
+  mapVehicleHandler(event) {
+    const btn   = event.currentTarget;
+    const plate = btn.getAttribute('data-plate');
+    const label = btn.getAttribute('data-label');
+    let coords  = null;
+    try { coords = JSON.parse(btn.getAttribute('data-coords')); } catch (_) {}
+    this.showVehicleOnMap(plate, label, coords);
+  },
 
-// Haritada araç konumunu göster
-showVehicleOnMap(plate, label, coords) {
-  // Backend coords döndürdüyse (örn. { x, y, z }) direkt aç
-  if (coords) {
-    NUI.callback('openMapMarker', { plate, label, coords })
-      .then(() => {})
-      .catch(err => console.warn('openMapMarker hatası:', err));
-    return;
-  }
-
-  // coords yoksa backend'den ayrıca sorgula
-  NUI.callback('getVehicleLocation', { plate }).then(result => {
-    if (result?.coords) {
-      NUI.callback('openMapMarker', { plate, label, coords: result.coords })
+  showVehicleOnMap(plate, label, coords) {
+    if (coords) {
+      NUI.callback('openMapMarker', { plate, label, coords })
         .then(() => {})
         .catch(err => console.warn('openMapMarker hatası:', err));
-    } else {
-      if (typeof Phone !== 'undefined' && Phone.showNotification) {
-        Phone.showNotification({
-          icon: '🗺️',
-          title: 'Harita',
-          message: label + ' konumu bulunamadı.'
-        });
+      return;
+    }
+
+    NUI.callback('getVehicleLocation', { plate }).then(result => {
+      if (result?.coords) {
+        NUI.callback('openMapMarker', { plate, label, coords: result.coords })
+          .then(() => {})
+          .catch(err => console.warn('openMapMarker hatası:', err));
+      } else {
+        if (typeof Phone !== 'undefined' && Phone.showNotification) {
+          Phone.showNotification({
+            icon: '🗺️',
+            title: 'Harita',
+            message: label + ' konumu bulunamadı.'
+          });
+        }
       }
-    }
-  }).catch(err => {
-    console.warn('getVehicleLocation hatası:', err);
-    if (typeof Phone !== 'undefined' && Phone.showNotification) {
-      Phone.showNotification({ icon: '❌', title: 'Harita', message: 'Konum alınamadı!' });
-    }
-  });
-},
+    }).catch(err => {
+      console.warn('getVehicleLocation hatası:', err);
+      if (typeof Phone !== 'undefined' && Phone.showNotification) {
+        Phone.showNotification({ icon: '❌', title: 'Harita', message: 'Konum alınamadı!' });
+      }
+    });
+  },
+  
 
   // ===== SETTINGS =====
   settings() {
