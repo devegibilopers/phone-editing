@@ -8,7 +8,124 @@
 <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 
+/* ----- Silme Modalı Özel Tasarımı ----- */
+.delete-modal {
+    text-align: center;
+    padding: 20px 10px;
+}
 
+.delete-icon {
+    font-size: 56px;
+    margin-bottom: 12px;
+    animation: iconShake 0.3s ease;
+}
+
+.delete-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #ff3b30; /* iOS kırmızısı */
+}
+
+.delete-message {
+    font-size: 14px;
+    color: var(--text2);
+    margin-bottom: 24px;
+    padding: 0 12px;
+}
+
+.delete-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.delete-cancel,
+.delete-confirm {
+    flex: 1;
+    padding: 10px 0;
+    border-radius: 30px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.delete-cancel {
+    background-color: #e5e5ea;
+    color: #000;
+    border: none;
+}
+
+.delete-cancel:hover {
+    background-color: #d1d1d6;
+}
+
+.delete-confirm {
+    background-color: #ff3b30;
+    color: white;
+    border: none;
+    box-shadow: 0 2px 6px rgba(255, 59, 48, 0.4);
+}
+
+.delete-confirm:hover {
+    background-color: #e62e23;
+    transform: scale(0.96);
+}
+
+@keyframes iconShake {
+    0% { transform: rotate(0deg); }
+    25% { transform: rotate(-10deg); }
+    75% { transform: rotate(10deg); }
+    100% { transform: rotate(0deg); }
+}
+
+/* Modal arka plan overlay (eğer şu ankiniz yetersizse) */
+.modal-overlay {
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(12px);
+    animation: fadeIn 0.2s ease;
+}
+
+.modal-container {
+    background: rgba(28, 28, 30, 0.95);
+    border-radius: 28px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    border: 0.5px solid rgba(255, 255, 255, 0.1);
+    animation: modalPop 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+
+@keyframes modalPop {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.list-item,
+.msg-bubble {
+    transition: background 0.1s ease;
+    user-select: none; /* metin seçilmesini engeller */
+}
+
+.list-item:active,
+.msg-bubble:active {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Mobilde uzun basma efekti için */
+.list-item.long-press,
+.msg-bubble.long-press {
+    background-color: rgba(255, 59, 48, 0.2);
+}
 
 /* ===== METİN SEÇİMİ ENGELLEME ===== */
 * {
@@ -700,6 +817,15 @@ input.styled::placeholder, textarea.styled::placeholder {
 .music-btn:hover { color:var(--text); }
 .music-btn-main { font-size:48px; color:var(--text); }
 
+.music-active-song {
+  background: rgba(255, 45, 85, 0.12) !important;
+  border-left: 3px solid #ff2d55;
+}
+
+#yt-player-wrap iframe {
+  border-radius: 12px;
+}
+
 /* Camera */
 .gallery-grid {
   display:grid;
@@ -1130,6 +1256,8 @@ input.styled::placeholder, textarea.styled::placeholder {
 
     <!-- Notification Toast -->
     <div id="notification-toast"></div>
+	
+	
 
     <!-- Modals -->
     <div class="modal-overlay hidden" id="modal-overlay">

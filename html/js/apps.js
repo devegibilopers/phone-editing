@@ -565,6 +565,10 @@ confirmDeleteMessage(id) {
   // ===== MUSIC =====
   currentSong: null,
   isPlaying: false,
+  ytPlayer: null,
+  currentPlaylist: [],
+  currentSongIndex: -1,
+  musicProgressInterval: null,
 
   music() {
     NUI.callback('getMusicPlaylists').then(playlists => {
@@ -575,14 +579,24 @@ confirmDeleteMessage(id) {
 
       let html = `
         <div class="music-player-card">
-          <div class="music-album-art" id="music-album-art">🎵</div>
-          <div class="music-title" id="music-title">${this.currentSong ? escHtml(this.currentSong.title) : 'Şarkı Seçilmedi'}</div>
-          <div class="music-artist" id="music-artist">${this.currentSong ? escHtml(this.currentSong.artist) : 'Bir çalma listesinden şarkı seç'}</div>
-          <div class="music-progress">
-            <div class="music-slider"><div class="music-slider-fill" id="music-progress"></div></div>
-            <div class="music-times"><span id="music-cur">0:00</span><span id="music-dur">0:00</span></div>
+          <div id="yt-player-wrap" style="display:${this.currentSong?.videoId ? 'block' : 'none'};border-radius:12px;overflow:hidden;margin-bottom:16px;">
+            <iframe id="yt-iframe"
+              width="100%" height="160"
+              src="${this.currentSong?.videoId ? `https://www.youtube.com/embed/${this.currentSong.videoId}?autoplay=1&enablejsapi=1` : ''}"
+              frameborder="0"
+              allow="autoplay; encrypted-media"
+              allowfullscreen
+              style="border-radius:12px;display:block;">
+            </iframe>
           </div>
-          <div class="music-controls">
+          <div id="yt-placeholder" style="display:${this.currentSong?.videoId ? 'none' : 'flex'}">
+            <div class="music-album-art" id="music-album-art" style="background:${this.currentSong?.thumb ? `url('${this.currentSong.thumb}') center/cover` : 'var(--surface2)'}">
+              ${this.currentSong?.thumb ? '' : '🎵'}
+            </div>
+          </div>
+          <div class="music-title" id="music-title">${this.currentSong ? escHtml(this.currentSong.title) : 'Şarkı Seçilmedi'}</div>
+          <div class="music-artist" id="music-artist">${this.currentSong ? escHtml(this.currentSong.artist||'') : 'Bir çalma listesinden şarkı seç'}</div>
+          <div class="music-controls" style="margin-top:16px">
             <button class="music-btn" onclick="Apps.prevSong()">⏮</button>
             <button class="music-btn music-btn-main" id="music-play-btn" onclick="Apps.togglePlay()">${this.isPlaying ? '⏸' : '▶️'}</button>
             <button class="music-btn" onclick="Apps.nextSong()">⏭</button>
@@ -601,7 +615,10 @@ confirmDeleteMessage(id) {
                 <div class="list-name">${escHtml(pl.name)}</div>
                 <div class="list-sub">${(pl.songs||[]).length} şarkı</div>
               </div>
-              <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();NUI.post('deleteMusicPlaylist',{id:${pl.id}});setTimeout(()=>Apps.music(),300)">🗑️</button>
+              <div style="display:flex;gap:6px;align-items:center">
+                <button class="btn btn-sm" style="background:#ff0000;color:#fff;font-size:11px;padding:6px 10px" onclick="event.stopPropagation();Apps.importYouTubePlaylist(${pl.id},'${escHtml(pl.name)}')">▶ YT</button>
+                <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();NUI.post('deleteMusicPlaylist',{id:${pl.id}});setTimeout(()=>Apps.music(),300)">🗑️</button>
+              </div>
             </div>`;
         });
       }
@@ -614,13 +631,32 @@ confirmDeleteMessage(id) {
     this.isPlaying = !this.isPlaying;
     const btn = document.getElementById('music-play-btn');
     if (btn) btn.textContent = this.isPlaying ? '⏸' : '▶️';
+    // iframe src toggle
+    const iframe = document.getElementById('yt-iframe');
+    if (iframe && this.currentSong.videoId) {
+      const base = `https://www.youtube.com/embed/${this.currentSong.videoId}`;
+      iframe.src = this.isPlaying ? `${base}?autoplay=1&enablejsapi=1` : `${base}?autoplay=0`;
+    }
   },
 
   prevSong() {
-    Phone.showNotification({ icon:'⏮', title:'Müzik', message:'Önceki şarkı' });
+    if (this.currentPlaylist.length === 0) return;
+    this.currentSongIndex = (this.currentSongIndex - 1 + this.currentPlaylist.length) % this.currentPlaylist.length;
+    this._playSongFromQueue(this.currentSongIndex);
   },
+
   nextSong() {
-    Phone.showNotification({ icon:'⏭', title:'Müzik', message:'Sonraki şarkı' });
+    if (this.currentPlaylist.length === 0) return;
+    this.currentSongIndex = (this.currentSongIndex + 1) % this.currentPlaylist.length;
+    this._playSongFromQueue(this.currentSongIndex);
+  },
+
+  _playSongFromQueue(index) {
+    const song = this.currentPlaylist[index];
+    if (!song) return;
+    this.currentSong = song;
+    this.isPlaying = true;
+    this.music();
   },
 
   openPlaylist(id, name, songsJson) {
@@ -630,31 +666,40 @@ confirmDeleteMessage(id) {
     showModal('🎵 ' + name, `
       <div style="padding:0 0 20px">
         ${songs.length ? songs.map((s, i) => `
-          <div class="list-item" onclick="Apps.playSong(${JSON.stringify(JSON.stringify(s))})">
-            <div class="list-avatar" style="background:linear-gradient(135deg,#ff2d55,#ff375f);font-size:20px">🎵</div>
+          <div class="list-item${this.currentSong?.videoId === s.videoId && s.videoId ? ' music-active-song' : ''}"
+               onclick="Apps.playSongFromPlaylist(${i},${JSON.stringify(JSON.stringify(songs))})">
+            <div class="list-avatar" style="background:${s.thumb ? `url('${s.thumb}') center/cover` : 'linear-gradient(135deg,#ff2d55,#ff375f)'};font-size:20px;background-size:cover;border-radius:8px">
+              ${s.thumb ? '' : '🎵'}
+            </div>
             <div class="list-info">
               <div class="list-name">${escHtml(s.title||'Şarkı '+(i+1))}</div>
               <div class="list-sub">${escHtml(s.artist||'')}</div>
             </div>
-            <span style="color:var(--text3)">▶</span>
+            <span style="color:${this.currentSong?.videoId === s.videoId && s.videoId ? '#ff2d55' : 'var(--text3)'}">
+              ${this.currentSong?.videoId === s.videoId && s.videoId ? '🔊' : '▶'}
+            </span>
           </div>`).join('') :
-          '<div class="empty-state"><div class="empty-icon">🎵</div><p>Bu listede şarkı yok</p></div>'
+          '<div class="empty-state"><div class="empty-icon">🎵</div><p>Bu listede şarkı yok</p><p style="font-size:12px;color:var(--text3);margin-top:8px">YT butonuyla YouTube\'dan ekle</p></div>'
         }
-        <div style="padding:16px">
+        <div style="padding:16px;display:flex;flex-direction:column;gap:8px">
           <button class="btn btn-primary" style="width:100%" onclick="Apps.addSongToPlaylist(${id},'${escHtml(name)}')">+ Şarkı Ekle</button>
+          <button class="btn" style="width:100%;background:#ff0000;color:#fff" onclick="Apps.importYouTubePlaylist(${id},'${escHtml(name)}')">▶ YouTube Playlist Yükle</button>
         </div>
       </div>
     `);
   },
 
-  playSong(songJson) {
-    try {
-      const song = JSON.parse(JSON.parse(songJson));
-      this.currentSong = song;
-      this.isPlaying = true;
-      closeModal();
-      this.music();
-    } catch(e) {}
+  playSongFromPlaylist(index, songsJson) {
+    let songs = [];
+    try { songs = JSON.parse(JSON.parse(songsJson)); } catch(e) {}
+    this.currentPlaylist = songs;
+    this.currentSongIndex = index;
+    const song = songs[index];
+    if (!song) return;
+    this.currentSong = song;
+    this.isPlaying = true;
+    closeModal();
+    this.music();
   },
 
   newPlaylist() {
@@ -672,6 +717,99 @@ confirmDeleteMessage(id) {
     NUI.post('saveMusicPlaylist', { name, songs: [] });
     closeModal();
     setTimeout(() => this.music(), 400);
+  },
+
+  importYouTubePlaylist(playlistId, playlistName) {
+    closeModal();
+    showModal('▶ YouTube Playlist Yükle', `
+      <div style="padding:0 20px 20px;display:flex;flex-direction:column;gap:14px">
+        <div style="background:rgba(255,0,0,0.1);border:1px solid rgba(255,0,0,0.3);border-radius:12px;padding:12px;font-size:13px;color:var(--text2)">
+          🎵 YouTube playlist veya video URL'lerini yapıştır.<br>
+          <span style="color:var(--text3);font-size:11px">Playlist URL, tek video URL veya video ID'leri (her satıra bir tane)</span>
+        </div>
+        <div class="input-group">
+          <label>YouTube URL / ID'leri</label>
+          <textarea class="styled" id="yt-urls-input" rows="5" placeholder="https://youtube.com/watch?v=dQw4w9WgXcQ&#10;https://youtube.com/watch?v=...&#10;veya sadece: dQw4w9WgXcQ" style="resize:vertical;font-size:12px;min-height:100px"></textarea>
+        </div>
+        <button class="btn" style="background:#ff0000;color:#fff;width:100%;font-weight:600" onclick="Apps.fetchYouTubeVideos(${playlistId},'${escHtml(playlistName)}')">
+          ▶ Ekle
+        </button>
+        <div id="yt-import-status" style="display:none;text-align:center;padding:8px;font-size:13px;color:var(--text2)"></div>
+      </div>
+    `);
+  },
+
+  _extractVideoIds(rawText) {
+    const ids = [];
+    const seen = new Set();
+    const lines = rawText.split(/[\n,]+/);
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t) continue;
+      // youtube.com/watch?v=ID or youtu.be/ID
+      let m = t.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      if (m) { if (!seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); } continue; }
+      // bare 11-char ID
+      if (/^[a-zA-Z0-9_-]{11}$/.test(t)) {
+        if (!seen.has(t)) { seen.add(t); ids.push(t); }
+      }
+    }
+    return ids;
+  },
+
+  async fetchYouTubeVideos(localPlaylistId, playlistName) {
+    const raw = document.getElementById('yt-urls-input')?.value?.trim();
+    const status = document.getElementById('yt-import-status');
+    if (!raw) { alert('En az bir URL veya ID gir!'); return; }
+
+    const videoIds = this._extractVideoIds(raw);
+    if (!videoIds.length) { alert('Geçerli YouTube URL veya ID bulunamadı!'); return; }
+
+    status.style.display = 'block';
+    status.innerHTML = `<span style="color:#ff9500">⏳ ${videoIds.length} video bilgisi alınıyor...</span>`;
+
+    // Fetch title/thumb for each video via noembed (no API key needed)
+    const songs = [];
+    for (const vid of videoIds) {
+      try {
+        const res = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${vid}`);
+        const data = await res.json();
+        songs.push({
+          title: data.title || vid,
+          artist: data.author_name || '',
+          videoId: vid,
+          thumb: `https://i.ytimg.com/vi/${vid}/mqdefault.jpg`,
+          url: `https://www.youtube.com/watch?v=${vid}`
+        });
+      } catch(e) {
+        // Fallback: add with just ID if noembed fails
+        songs.push({
+          title: vid,
+          artist: '',
+          videoId: vid,
+          thumb: `https://i.ytimg.com/vi/${vid}/mqdefault.jpg`,
+          url: `https://www.youtube.com/watch?v=${vid}`
+        });
+      }
+    }
+
+    status.innerHTML = `<span style="color:#30d158">✅ ${songs.length} şarkı hazır, kaydediliyor...</span>`;
+
+    NUI.callback('getMusicPlaylists').then(pls => {
+      const pl = pls?.find(p => p.id === localPlaylistId);
+      const existing = pl?.songs || [];
+      const existingIds = new Set(existing.map(s => s.videoId).filter(Boolean));
+      const newSongs = songs.filter(s => !existingIds.has(s.videoId));
+      const merged = [...existing, ...newSongs];
+
+      NUI.post('saveMusicPlaylist', { id: localPlaylistId, name: playlistName, songs: merged });
+
+      setTimeout(() => {
+        closeModal();
+        Phone.showNotification({ icon:'🎵', title:'YouTube Import', message:`${newSongs.length} şarkı eklendi!` });
+        Apps.music();
+      }, 500);
+    });
   },
 
   addSongToPlaylist(id, playlistName) {
