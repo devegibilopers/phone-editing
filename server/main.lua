@@ -39,6 +39,13 @@ local function AssignPhoneNumber(citizenid, cb)
     end)
 end
 
+RegisterNetEvent('phone:deleteMessage')
+AddEventHandler('phone:deleteMessage', function(msgId)
+    MySQL.Async.execute('DELETE FROM phone_messages WHERE id = @id', {
+        ['@id'] = msgId
+    })
+end)
+
 -- Get phone number on load
 RegisterNetEvent('qb-phone:server:getPhoneNumber', function()
     local src = source
@@ -362,4 +369,28 @@ NUI.registerCallback('openMapMarker', function(source, data, cb)
     -- Bu callback sadece client'a sinyal verir,
     -- asıl harita işlemi client tarafında yapılır
     cb({ success = true })
+end)
+
+-- Tüm konuşmayı silme (sadece alıcının tarafından)
+QBCore.Functions.CreateCallback('qb-phone:server:deleteConversation', function(source, cb, data)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return cb(false) end
+    local myNumber = Player.PlayerData.charinfo.phone
+    local otherNumber = data.number
+
+    MySQL.Async.execute('DELETE FROM phone_messages WHERE (sender_number = ? AND receiver_number = ?) OR (sender_number = ? AND receiver_number = ?)', 
+        { myNumber, otherNumber, otherNumber, myNumber })
+    cb(true)
+end)
+
+-- Tek bir mesaj silme (sadece gelen mesajlar için)
+QBCore.Functions.CreateCallback('qb-phone:server:deleteMessage', function(source, cb, data)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return cb(false) end
+    local myNumber = Player.PlayerData.charinfo.phone
+
+    MySQL.Async.execute('DELETE FROM phone_messages WHERE id = ? AND receiver_number = ?', { data.id, myNumber })
+    cb(true)
 end)
