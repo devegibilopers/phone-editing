@@ -1,6 +1,6 @@
-# 📱 QB-Phone — Ücretsiz & Açık Kaynak FiveM Telefon Scripti
+# 📱 Devegibiloper-Phone 
 
-**QBCore** için tam özellikli, iOS tarzı telefon scripti. Tamamen ücretsiz!
+**QBCore** için tam özellikli, iOS tarzı telefon scripti.
 
 ---
 
@@ -105,8 +105,8 @@ end)
 
 ---
 
-## 📜 Lisans
+## 📜 Lisans Devegibiloper
 
-Bu script tamamen ücretsiz ve açık kaynaklıdır. İstediğin gibi kullanabilir, değiştirebilirsin.
+Bu script tamamen ücretsiz ve açık kaynaklıdır.
 
 Leaklemeden önce iki kez düşün 😊
